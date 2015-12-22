@@ -31,7 +31,7 @@ NVCC = nvcc
 NVCCFLAGS = -O3 --compiler-options -fPIC
 
 EXENAME = tMultiScaleCleanCuda
-OBJS = $(EXENAME).o Stopwatch.o HogbomGolden.o MultiScaleCuda.o
+OBJS = $(EXENAME).o Stopwatch.o MultiScaleGolden.o MultiScaleCuda.o
 
 all:		$(EXENAME)
 

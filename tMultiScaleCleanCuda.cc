@@ -34,7 +34,7 @@
 // Local includes
 #include "Parameters.h"
 #include "Stopwatch.h"
-#include "HogbomGolden.h"
+#include "MultiScaleGolden.h"
 #include "MultiScaleCuda.h"
 
 using namespace std;
@@ -59,6 +59,45 @@ void writeImage(const string& filename, vector<float>& image)
     ofstream file(filename.c_str(), ios::out | ios::binary | ios::trunc);
     file.write(reinterpret_cast<char *>(&image[0]), image.size() * sizeof(float));
     file.close();
+}
+float lininterp(vector<float> f, float x) 
+{
+    float delx = x - floorf(x);
+    int x0 = (int)floorf(x);
+    return f[x0+1]*delx + f[x0]*(1-delx);
+}
+std::vector<float> buildComponent(const string& filename, size_t img_size) 
+{
+   //TODO do this carefully
+    vector<float> prolsph = readImage(g_dirtyFile);
+    
+    vector<float> image;
+    for(int q=-img_size/2;q<img_size/2;q++) 
+    {
+        for(int p=-img_size/2;p<img_size/2;p++) 
+        {
+             float r = sqrt(pow(q*g_grid,2)+pow(p*g_grid,2));
+             image.push_back(lininterp(prolsph, r/g_grid+prolsph.size()/2));
+        }
+    }
+    return image;
+     
+}
+std::vector<float> buildEnvelope(float width, size_t img_size) 
+{
+   //TODO do this carefully
+    vector<float> prolsph = readImage(g_dirtyFile);
+    
+    vector<float> image;
+    for(int q=-img_size/2;q<img_size/2;q++) 
+    {
+        for(int p=-img_size/2;p<img_size/2;p++) 
+        {
+             float r = sqrt(pow(q*g_grid,2)+pow(p*g_grid,2));
+             image.push_back(1.0-pow(r/width,2));
+        }
+    }
+    return image; 
 }
 
 size_t checkSquare(vector<float>& vec)
@@ -113,16 +152,19 @@ int main(int argc, char** argv)
     //PSF's for varying width for multi-scale
     int widths[5] = {0, 2, 4, 8, 16};
     vector<float> MSpsf[5];  
+    vector<float> baseComponent;
     vector<float> componentCross[5*5];
     float peak_scale[5];
     for (int q=0; q<5; q++) {
        peak_scale[q] = 1 - (0.6*widths[q])/widths[5-1];
-       //TODO Read real component shapes
-       MSpsf[q] = readImage(g_psfFile);
-       //TODO convolve component shapes (m_i) with psf
-       //TODO convolve each m_i*psf with each component shape
+       baseComponent = buildComponent(g_prolsphFile, g_componentSize);
        for (int p=0;p<5;p++) {
+          vector<float> envelope = buildEnvelope(widths[p], g_componentSize);
+          //TODO multiply each envelope with baseComponent
+          MSpsf[q] = readImage(g_psfFile);
+          //TODO convolve each MSpsf with every other
           componentCross[q*5+p] = readImage(g_psfFile);
+          //TODO convolve each MSpsf and componentCross with PSF
        }
     }
 
@@ -136,21 +178,23 @@ int main(int argc, char** argv)
     //
     // Run the golden version of the code
     //
-    vector<float> goldenResidual;
-    vector<float> goldenModel(dirty.size());
+    vector<float> goldenResidual[5];
+    //TODO No need to read this from file
+    for (int s=0;s<5;s++) goldenResidual[s] = readImage(g_dirtyFile);
 
+    vector<float> goldenModel(dirty.size());
     if (computeGolden)
     {
         zeroInit(goldenModel);
         {
             // Now we can do the timing for the serial (Golden) CPU implementation
             cout << "+++++ Forward processing (CPU Golden) +++++" << endl;
-            //TODO create Multiscale golden
-            HogbomGolden golden;
+            MultiScaleGolden golden(5);
 
             Stopwatch sw;
             sw.start();
-            golden.deconvolve(dirty, dim, psf, psfDim, goldenModel, goldenResidual);
+            golden.deconvolve(dirty, dim, MSpsf, psfDim, componentCross, 
+                              goldenModel, goldenResidual);
             const double time = sw.stop();
 
             // Report on timings
@@ -162,7 +206,7 @@ int main(int argc, char** argv)
     }
 
     // Write images out
-    writeImage("residual.img", goldenResidual);
+    writeImage("residual.img", goldenResidual[3]);
     writeImage("model.img", goldenModel);
 
     //
@@ -202,7 +246,10 @@ int main(int argc, char** argv)
     }
 
     cout << "Verifying residual...";
-    const bool residualDiff = compare(goldenResidual, cudaResidual[0]);
+    bool residualDiff = true; 
+    for (int s=0;s<5;s++) {
+       residualDiff = residualDiff && compare(goldenResidual[s], cudaResidual[s]);
+    }
     if (!residualDiff) {
         //return 1;
         return 0;

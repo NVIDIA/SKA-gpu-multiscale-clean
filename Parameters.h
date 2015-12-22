@@ -29,10 +29,13 @@
 // Configuration
 static const std::string g_dirtyFile = "dirty.img";
 static const std::string g_psfFile = "psf.img";
+static const std::string g_prolsphFile = "prol_sph0.0126.dat";
+static const unsigned int g_componentSize = 48;
 
 static const unsigned int g_niters = 1000;
 static const float g_gain = 0.1;
 static const float g_threshold = 0.00001;
+static const float g_grid = 0.1;
 
 
 #endif

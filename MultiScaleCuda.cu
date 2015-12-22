@@ -292,23 +292,23 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
 
     for (unsigned int i = 0; i < g_niters; ++i) {
         // Find peak in the residual image
-        Peak realPeak;
-        realPeak.val=-INT_MAX;
+        Peak absPeak;
+        absPeak.val=-INT_MAX;
         for (int s=0;s<n_scale;s++) {
            //TODO multiply by scale-dependent scale factor
            //TODO think of synonym for "scale", reword preceeding nonsense
            Peak thisPeak = findPeak(d_peaks[s], d_residual[s], residual[0].size());
-           if (thisPeak > realPeak) realPeak=thisPeak;
+           if (thisPeak > absPeak) absPeak=thisPeak;
         }
 
-        assert(realPeak.pos <= residual[0].size());
+        assert(absPeak.pos <= residual[0].size());
         //cout << "Iteration: " << i + 1 << " - Maximum = " << peak.val
         //    << " at location " << idxToPos(peak.pos, dirtyWidth).x << ","
         //    << idxToPos(peak.pos, dirtyWidth).y << endl;
 
 
         // Check if threshold has been reached
-        if (abs(realPeak.val) < g_threshold) {
+        if (abs(absPeak.val) < g_threshold) {
             cout << "Reached stopping threshold" << endl;
             break;
         }
@@ -316,12 +316,12 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
         // Subtract the PSF from the residual image (this function will launch
         // an kernel asynchronously, need to sync later
         for (int s=0; s<n_scale; s++) {
-           subtractPSF(d_cross[realPeak.scale][s], psfWidth, d_residual[s], dirtyWidth, realPeak.pos, psfPeak[s].pos, realPeak.val, g_gain);
+           subtractPSF(d_cross[absPeak.scale][s], psfWidth, d_residual[s], dirtyWidth, absPeak.pos, psfPeak[s].pos, absPeak.val, g_gain);
         }
 
         // Add to model
        //TODO add a source of finite width to model
-        model[realPeak.pos] += realPeak.val * g_gain;
+        model[absPeak.pos] += absPeak.val * g_gain;
     }
 
     // Copy device array back into the host vector
