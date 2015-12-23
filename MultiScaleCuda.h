@@ -61,6 +61,7 @@ class MultiScaleCuda {
         float* d_cross_all;
         float** d_psf;
         float** d_residual;
+        float* d_model;
         Peak** d_peaks;
         float*** d_cross;
         size_t n_scale;

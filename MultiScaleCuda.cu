@@ -59,7 +59,7 @@ static void checkerror(cudaError_t err)
     }
 }
 __host__
-static void checkerror(cudaError_t err, int line, char* filename)
+static void checkerror(cudaError_t err, int line, const char* filename)
 {
     if (err != cudaSuccess)
     {
@@ -212,6 +212,8 @@ MultiScaleCuda::MultiScaleCuda(size_t psfSize, size_t n_scale_in, size_t residua
     checkerror(err);
     err = cudaMalloc((void **) &d_residual_all, residualSize * sizeof(float) * n_scale);
     checkerror(err);
+    err = cudaMalloc((void **) &d_model, residualSize * sizeof(float));
+    checkerror(err);
     err = cudaMalloc((void **) &d_peaks_all, findPeakNBlocks * sizeof(Peak) * n_scale);
     checkerror(err);
     //TODO use less memory by keeping only the upper diagonal
@@ -221,14 +223,14 @@ MultiScaleCuda::MultiScaleCuda(size_t psfSize, size_t n_scale_in, size_t residua
     d_residual = (float**)malloc(sizeof(float*)*n_scale);
     d_peaks = (Peak**)malloc(sizeof(Peak*)*n_scale);
     d_cross = (float***)malloc(sizeof(float**)*n_scale);
-    for (int s=0;s<n_scale;s++) {
+    for (size_t s=0;s<n_scale;s++) {
        d_psf[s] = d_psf_all+s*psfSize;
        d_residual[s] = d_residual_all+s*residualSize;
        d_peaks[s] = d_peaks_all+s*findPeakNBlocks;
        d_cross[s] = (float**)malloc(sizeof(float*)*n_scale);
        //TODO Here we can just rearrange the pointers to point only to the
        //     upper diag
-       for (int ss=0;ss<n_scale;ss++) {
+       for (size_t ss=0;ss<n_scale;ss++) {
           d_cross[s][ss] = d_cross_all + (s*n_scale+ss)*psfSize;
        }
     }
@@ -240,12 +242,13 @@ MultiScaleCuda::~MultiScaleCuda()
     // Free device memory
     cudaFree(d_psf_all);
     cudaFree(d_residual_all);
+    cudaFree(d_model);
     cudaFree(d_peaks_all);
     cudaFree(d_cross_all);
     free(d_psf);
     free(d_residual);
     free(d_peaks);
-    for(int s=0;s<n_scale;s++) {
+    for(size_t s=0;s<n_scale;s++) {
       free(d_cross[s]);
     }
     free(d_cross);
@@ -268,20 +271,23 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
     cudaError_t err;
 
     // Copy host vectors to device arrays
-    for (int s=0;s<n_scale;s++) {
+    for (size_t s=0;s<n_scale;s++) {
        err = cudaMemcpy(d_psf[s], &psf[s][0], psf[0].size() * sizeof(float), cudaMemcpyHostToDevice);
        checkerror(err, __LINE__, __FILE__);
        err = cudaMemcpy(d_residual[s], &dirty[0], residual[0].size() * sizeof(float), cudaMemcpyHostToDevice);
        checkerror(err, __LINE__, __FILE__);
-       for (int ss=0;ss<n_scale;ss++) {
+       for (size_t ss=0;ss<n_scale;ss++) {
           err = cudaMemcpy(d_cross[s][ss], &cross[s*n_scale+ss][0], psf[0].size() * sizeof(float), cudaMemcpyHostToDevice);
           checkerror(err, __LINE__, __FILE__);
        }
     }
+ 
+    //Zero the model
+    cudaMemset(d_model, 0, model.size() * sizeof(float));
 
     // Find peak of PSF
     Peak *psfPeak = new Peak[n_scale];
-    for (int s=0;s<n_scale;s++) {
+    for (size_t s=0;s<n_scale;s++) {
       psfPeak[s] = findPeak(d_peaks[s], d_psf[s], psf[s].size());
 
       cout << "Found peak of PSF: " << "Maximum = " << psfPeak[s].val 
@@ -294,12 +300,20 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
         // Find peak in the residual image
         Peak absPeak;
         absPeak.val=-INT_MAX;
-        for (int s=0;s<n_scale;s++) {
+#if 1
+        for (size_t s=0;s<n_scale;s++) {
            //TODO multiply by scale-dependent scale factor
            //TODO think of synonym for "scale", reword preceeding nonsense
            Peak thisPeak = findPeak(d_peaks[s], d_residual[s], residual[0].size());
            if (thisPeak > absPeak) absPeak=thisPeak;
         }
+#else
+        //TODO We can do these searches in one step if we scale each residual by the factor
+        //     We will also need to un-scale the absPeak.val as we add it to the model and
+        //     re-scale for each new component as we subtract
+        absPeak = findPeak(d_peaks[0], d_residual[0], n_scale*residual[0].size());
+        absPeak.pos %= residual[0].size();
+#endif
 
         assert(absPeak.pos <= residual[0].size());
         //cout << "Iteration: " << i + 1 << " - Maximum = " << peak.val
@@ -315,20 +329,24 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
 
         // Subtract the PSF from the residual image (this function will launch
         // an kernel asynchronously, need to sync later
-        for (int s=0; s<n_scale; s++) {
+        for (size_t s=0; s<n_scale; s++) {
+           //TODO Do we need to find a center for d_cross?
            subtractPSF(d_cross[absPeak.scale][s], psfWidth, d_residual[s], dirtyWidth, absPeak.pos, psfPeak[s].pos, absPeak.val, g_gain);
         }
 
         // Add to model
-       //TODO add a source of finite width to model
-        model[absPeak.pos] += absPeak.val * g_gain;
+        //Note, the minus sign in front of -absPeak.val makes this an addition instead
+        subtractPSF(d_psf[absPeak.scale], psfWidth, d_model, dirtyWidth, absPeak.pos, psfPeak[absPeak.scale].pos, 
+                    -absPeak.val, g_gain);
     }
 
     // Copy device array back into the host vector
-    for (int s=0;s<n_scale;s++) {
+    for (size_t s=0;s<n_scale;s++) {
        err = cudaMemcpy(&residual[s][0], d_residual[s], residual[0].size() * sizeof(float), cudaMemcpyDeviceToHost);
        checkerror(err);
     }
+    err = cudaMemcpy(&model[0], d_model, model.size() * sizeof(float), cudaMemcpyDeviceToHost);
+    checkerror(err);
     delete []psfPeak;
 }
 

@@ -44,12 +44,12 @@ void MultiScaleGolden::deconvolve(const vector<float>& dirty,
                               vector<float>& model,
                               vector<float>* residual)
 {
-    for (int s=0;s<n_scale;s++) residual[s] = dirty;
+    for (size_t s=0;s<n_scale;s++) residual[s] = dirty;
 
     // Find the peak of the PSF
     float *psfPeakVal = new float[n_scale];
     size_t *psfPeakPos = new size_t[n_scale];
-    for (int s=0;s<n_scale;s++)
+    for (size_t s=0;s<n_scale;s++)
     {
        //TODO multiply by scale-dependent scale factor
        findPeak(psf[s], psfPeakVal[s], psfPeakPos[s]);
@@ -66,7 +66,7 @@ void MultiScaleGolden::deconvolve(const vector<float>& dirty,
         float thisPeakVal = 0.0;
         size_t thisPeakPos = 0;
         int absPeakScale = 0;
-        for (int s=0; s<n_scale; s++)
+        for (size_t s=0; s<n_scale; s++)
         {
            findPeak(residual[s], thisPeakVal, thisPeakPos);
            //cout << "Iteration: " << i + 1 << " - Maximum = " << absPeakVal
@@ -87,10 +87,11 @@ void MultiScaleGolden::deconvolve(const vector<float>& dirty,
 
         // Add to model
         //TODO Build the model with multiple components
-        model[absPeakPos] += absPeakVal * g_gain;
+        subtractPSF(psf[absPeakScale], psfWidth, model, dirtyWidth, absPeakPos,
+                    psfPeakPos[absPeakScale], -absPeakVal, g_gain);
 
         // Subtract the PSF from the residual image
-        for (int s=0;s<n_scale;s++) {
+        for (size_t s=0;s<n_scale;s++) {
            subtractPSF(cross[absPeakScale*n_scale+s], psfWidth, residual[s], dirtyWidth, absPeakPos, psfPeakPos[s], absPeakVal, g_gain);
         }
     }
