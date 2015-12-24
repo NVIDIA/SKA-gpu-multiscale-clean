@@ -144,16 +144,22 @@ void d_subtractPSF(const float* __restrict__ d_psf,
     const int startx, const int starty,
     int const stopx, const int stopy,
     const int diffx, const int diffy,
-    const float absPeakVal, const float gain)
+    const float absPeakVal, const float gain, size_t n_scale)
 {   
-    const int x =  startx + threadIdx.x + (blockIdx.x * blockDim.x);
-    const int y =  starty + threadIdx.y + (blockIdx.y * blockDim.y);
+    int x =  startx + threadIdx.x + (blockIdx.x * blockDim.x);
+    int y =  starty + threadIdx.y + (blockIdx.y * blockDim.y);
 
     // Because workload is not always a multiple of thread block size, 
     // need to ensure only threads in the work area actually do work
-    if (x <= stopx && y <= stopy) {
-        d_residual[posToIdx(residualWidth, Position(x, y))] -= gain * absPeakVal
-            * d_psf[posToIdx(psfWidth, Position(x - diffx, y - diffy))];
+    #pragma unroll
+    for (size_t s = 0; s < n_scale; s++)
+    {
+       if (x <= stopx && y <= stopy) {
+           d_residual[residualWidth*residualWidth*s + posToIdx(residualWidth, Position(x, y))] -= 
+               gain * absPeakVal
+                     * d_psf[psfWidth*psfWidth*s + posToIdx(psfWidth, Position(x - diffx, y - diffy))];
+                     //* __ldg(&d_psf[psfWidth*psfWidth*s + posToIdx(psfWidth, Position(x - diffx, y - diffy))]);
+       }
     }
 }
 
@@ -161,7 +167,7 @@ __host__
 static void subtractPSF(const float* d_psf, const int psfWidth,
         float* d_residual, const int residualWidth,
         const size_t peakPos, const size_t psfPeakPos,
-        const float absPeakVal, const float gain)
+        const float absPeakVal, const float gain, size_t n_scale=1)
 {  
     // The x,y coordinate of the peak in the residual image
     const int rx = idxToPos(peakPos, residualWidth).x;
@@ -196,7 +202,7 @@ static void subtractPSF(const float* d_psf, const int psfWidth,
     dim3 gridDim(blocksx, blocksy);
 
     d_subtractPSF<<<gridDim, blockDim>>>(d_psf, psfWidth, d_residual, residualWidth,
-        startx, starty, stopx, stopy, diffx, diffy, absPeakVal, gain);
+        startx, starty, stopx, stopy, diffx, diffy, absPeakVal, gain, n_scale);
     cudaError_t err = cudaGetLastError();
     checkerror(err);
 }
@@ -300,7 +306,7 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
         // Find peak in the residual image
         Peak absPeak;
         absPeak.val=-INT_MAX;
-#if 1
+#if 0
         for (size_t s=0;s<n_scale;s++) {
            //TODO multiply by scale-dependent scale factor
            //TODO think of synonym for "scale", reword preceeding nonsense
@@ -329,10 +335,16 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
 
         // Subtract the PSF from the residual image (this function will launch
         // an kernel asynchronously, need to sync later
+#if 1
         for (size_t s=0; s<n_scale; s++) {
            //TODO Do we need to find a center for d_cross?
            subtractPSF(d_cross[absPeak.scale][s], psfWidth, d_residual[s], dirtyWidth, absPeak.pos, psfPeak[s].pos, absPeak.val, g_gain);
         }
+#else
+        //TODO If psfs have different peaks, we need to pass them all
+        //Note, this depends on d_cross and d_residual being continguous in memory
+        subtractPSF(d_cross[absPeak.scale][0], psfWidth, d_residual[0], dirtyWidth, absPeak.pos, psfPeak[0].pos, absPeak.val, g_gain, n_scale);
+#endif
 
         // Add to model
         //Note, the minus sign in front of -absPeak.val makes this an addition instead

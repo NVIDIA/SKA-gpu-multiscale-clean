@@ -28,7 +28,7 @@ CFLAGS = -Wall -Wextra -O3 -fstrict-aliasing -fPIC
 INCLUDE = -I$(CUDA_INSTALL)/include -I$(CUB_HOME)/cub
 
 NVCC = nvcc
-NVCCFLAGS = -O3 --compiler-options -fPIC
+NVCCFLAGS = -lineinfo -arch=sm_35 -O3 --compiler-options -fPIC
 
 EXENAME = tMultiScaleCleanCuda
 OBJS = $(EXENAME).o Stopwatch.o MultiScaleGolden.o MultiScaleCuda.o
