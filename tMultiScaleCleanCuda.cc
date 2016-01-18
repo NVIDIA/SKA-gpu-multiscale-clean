@@ -39,19 +39,46 @@
 
 using namespace std;
 
-vector<float> readImage(const string& filename)
+vector<float> readImage(const string& filename, size_t out_dim=0)
 {
     struct stat results;
     if (stat(filename.c_str(), &results) != 0) {
         cerr << "Error: Could not stat " << filename << endl;
         exit(1);
     }
+    size_t orig_size = results.st_size / sizeof(float);
 
-    vector<float> image(results.st_size / sizeof(float));
-    ifstream file(filename.c_str(), ios::in | ios::binary);
-    file.read(reinterpret_cast<char *>(&image[0]), results.st_size);
-    file.close();
-    return image;
+    size_t orig_dim = sqrt(orig_size);
+
+    if (out_dim > 0) {
+       char* junk;
+       junk = (char*)malloc(sizeof(float)*orig_dim);
+       
+       vector<float> image(out_dim*out_dim);
+       int r_new = 0;
+       ifstream file(filename.c_str(), ios::in | ios::binary);
+       for (int r = -orig_dim/2; r<orig_dim/2; r++) {
+          if (r>=-out_dim/2 && r < out_dim/2) {
+             file.read(junk,sizeof(float)*(orig_dim-out_dim)/2);
+             file.read(reinterpret_cast<char *>(&image[out_dim*r_new]), sizeof(float)*out_dim);
+             file.read(junk,sizeof(float)*(orig_dim-out_dim)/2);
+             r_new++;
+          } else {
+             file.read(junk,sizeof(float)*orig_dim);
+          }
+          
+          
+       }
+       file.close();
+       free(junk);
+       return image;
+    } else { 
+       vector<float> image(orig_size);
+       ifstream file(filename.c_str(), ios::in | ios::binary);
+       file.read(reinterpret_cast<char *>(&image[0]), results.st_size);
+       file.close();
+       return image;
+    }
 }
 
 void writeImage(const string& filename, vector<float>& image)
@@ -69,7 +96,7 @@ float lininterp(vector<float> f, float x)
 std::vector<float> buildComponent(const string& filename, size_t img_size) 
 {
    //TODO do this carefully
-    vector<float> prolsph = readImage(g_dirtyFile);
+    vector<float> prolsph = readImage(g_prolsphFile);
     
     vector<float> image;
     for(int q=-img_size/2;q<img_size/2;q++) 
@@ -142,12 +169,13 @@ int main(int argc, char** argv)
 {
     cout << "Reading dirty image and psf image" << endl;
     // Load dirty image and psf
-    vector<float> dirty = readImage(g_dirtyFile);
+    vector<float> dirty = readImage(g_dirtyFile,g_imageSize);
     const size_t dim = checkSquare(dirty);
-    vector<float> psf = readImage(g_psfFile);
+    vector<float> psf = readImage(g_psfFile,g_psfDim);
     const size_t psfDim = checkSquare(psf);
     int psf_wid = sqrt(psf.size());
     cout << "psf_wid = " << psf_wid << endl;
+    cout << "psfDim = " << psfDim << endl;
 
     //PSF's for varying width for multi-scale
     int widths[5] = {0, 2, 4, 8, 16};
@@ -161,9 +189,9 @@ int main(int argc, char** argv)
        for (int p=0;p<5;p++) {
           vector<float> envelope = buildEnvelope(widths[p], g_componentSize);
           //TODO multiply each envelope with baseComponent
-          MSpsf[q] = readImage(g_psfFile);
+          MSpsf[q] = readImage(g_psfFile,g_psfDim+g_componentSize);
           //TODO convolve each MSpsf with every other
-          componentCross[q*5+p] = readImage(g_psfFile);
+          componentCross[q*5+p] = readImage(g_psfFile,g_psfDim+2*g_componentSize);
           //TODO convolve each MSpsf and componentCross with PSF
        }
     }
@@ -180,7 +208,7 @@ int main(int argc, char** argv)
     //
     vector<float> goldenResidual[5];
     //TODO No need to read this from file
-    for (int s=0;s<5;s++) goldenResidual[s] = readImage(g_dirtyFile);
+    for (int s=0;s<5;s++) goldenResidual[s] = readImage(g_dirtyFile,g_imageSize);
 
     vector<float> goldenModel(dirty.size());
     if (computeGolden)
@@ -194,7 +222,7 @@ int main(int argc, char** argv)
             Stopwatch sw;
             sw.start();
             golden.deconvolve(dirty, dim, MSpsf, psfDim, componentCross, 
-                              goldenModel, goldenResidual);
+                              psfDim+2*g_componentSize, goldenModel, goldenResidual);
             const double time = sw.stop();
 
             // Report on timings
@@ -214,7 +242,7 @@ int main(int argc, char** argv)
     //
     //vector<float> cudaResidual(dirty.size());
     vector<float> cudaResidual[5];
-    for (int s=0;s<5;s++) cudaResidual[s] = readImage(g_dirtyFile);
+    for (int s=0;s<5;s++) cudaResidual[s] = readImage(g_dirtyFile,g_imageSize);
     //TODO convolve each residual with it's widened PSF
     vector<float> cudaModel(dirty.size());
     zeroInit(cudaModel);
@@ -225,8 +253,8 @@ int main(int argc, char** argv)
 
         Stopwatch sw;
         sw.start();
-        cuda.deconvolve(dirty, dim, MSpsf, psfDim, componentCross, cudaModel, 
-                        cudaResidual);
+        cuda.deconvolve(dirty, dim, MSpsf, psfDim, componentCross, psfDim + 2*g_componentSize,
+                        cudaModel, cudaResidual);
         const double time = sw.stop();
 
         // Report on timings

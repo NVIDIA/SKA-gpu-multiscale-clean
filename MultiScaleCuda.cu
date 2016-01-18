@@ -271,6 +271,7 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
         const vector<float>* psf,
         const size_t psfWidth,
         const vector<float>* cross,
+        const size_t crossWidth,
         vector<float>& model,
         vector<float>* residual)
 {
@@ -328,7 +329,8 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
 
 
         // Check if threshold has been reached
-        if (abs(absPeak.val) < g_threshold) {
+        // Disable convergence check now. Reenable with realistic component shapes, etc.
+        if (false && abs(absPeak.val) < g_threshold) {
             cout << "Reached stopping threshold" << endl;
             break;
         }
@@ -338,7 +340,7 @@ void MultiScaleCuda::deconvolve(const vector<float>& dirty,
 #if 1
         for (size_t s=0; s<n_scale; s++) {
            //TODO Do we need to find a center for d_cross?
-           subtractPSF(d_cross[absPeak.scale][s], psfWidth, d_residual[s], dirtyWidth, absPeak.pos, psfPeak[s].pos, absPeak.val, g_gain);
+           subtractPSF(d_cross[absPeak.scale][s], crossWidth, d_residual[s], dirtyWidth, absPeak.pos, psfPeak[s].pos, absPeak.val, g_gain);
         }
 #else
         //TODO If psfs have different peaks, we need to pass them all

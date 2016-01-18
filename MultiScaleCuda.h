@@ -48,6 +48,7 @@ class MultiScaleCuda {
                 const std::vector<float>* psf,
                 const size_t psfWidth,
                 const std::vector<float>* cross,
+                const size_t crossWidth,
                 std::vector<float>& model,
                 std::vector<float>* residual);
 

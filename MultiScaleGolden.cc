@@ -41,6 +41,7 @@ void MultiScaleGolden::deconvolve(const vector<float>& dirty,
                               const vector<float>* psf,
                               const size_t psfWidth,
                               const vector<float>* cross,
+                              const size_t crossWidth,
                               vector<float>& model,
                               vector<float>* residual)
 {
@@ -92,7 +93,7 @@ void MultiScaleGolden::deconvolve(const vector<float>& dirty,
 
         // Subtract the PSF from the residual image
         for (size_t s=0;s<n_scale;s++) {
-           subtractPSF(cross[absPeakScale*n_scale+s], psfWidth, residual[s], dirtyWidth, absPeakPos, psfPeakPos[s], absPeakVal, g_gain);
+           subtractPSF(cross[absPeakScale*n_scale+s], crossWidth, residual[s], dirtyWidth, absPeakPos, psfPeakPos[s], absPeakVal, g_gain);
         }
     }
 }

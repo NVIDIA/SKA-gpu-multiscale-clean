@@ -41,7 +41,7 @@ HogbomCuda.o:	HogbomCuda.cu HogbomCuda.h Parameters.h
 MultiScaleCuda.o:	MultiScaleCuda.cu MultiScaleCuda.h Parameters.h
 		$(NVCC) $(NVCCFLAGS) $(INCLUDE) -c $<
 
-%.o:		%.cc %.h Parameters.h
+%.o:		Parameters.h %.cc %.h 
 		$(CXX) $(CFLAGS) $(INCLUDE) -c $<
 
 $(EXENAME):	$(OBJS)
