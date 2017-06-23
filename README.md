@@ -1,7 +1,7 @@
 # GPUMultiscaleCLEAN
 Multi-scale clean for the GPU
 
-This code is written by Mark Harris, unabashedly stolen from the ASKAP project, and 
+This code is written by Mark Harris, based on work from the ASKAP project, and 
 modified for multi-scale by Levi Barnes. The original code can be found here:
 https://github.com/askap-benchmarks/
 
