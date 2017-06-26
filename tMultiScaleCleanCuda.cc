@@ -57,7 +57,7 @@ vector<float> readImage(const string& filename, size_t out_dim=0)
        vector<float> image(out_dim*out_dim);
        int r_new = 0;
        ifstream file(filename.c_str(), ios::in | ios::binary);
-       for (int r = -orig_dim/2; r<orig_dim/2; r++) {
+       for (size_t r = -orig_dim/2; r<orig_dim/2; r++) {
           if (r>=-out_dim/2 && r < out_dim/2) {
              file.read(junk,sizeof(float)*(orig_dim-out_dim)/2);
              file.read(reinterpret_cast<char *>(&image[out_dim*r_new]), sizeof(float)*out_dim);
@@ -96,12 +96,12 @@ float lininterp(vector<float> f, float x)
 std::vector<float> buildComponent(const string& filename, size_t img_size) 
 {
    //TODO do this carefully
-    vector<float> prolsph = readImage(g_prolsphFile);
+    vector<float> prolsph = readImage(filename);
     
     vector<float> image;
-    for(int q=-img_size/2;q<img_size/2;q++) 
+    for(size_t q=-img_size/2;q<img_size/2;q++) 
     {
-        for(int p=-img_size/2;p<img_size/2;p++) 
+        for(size_t p=-img_size/2;p<img_size/2;p++) 
         {
              float r = sqrt(pow(q*g_grid,2)+pow(p*g_grid,2));
              image.push_back(lininterp(prolsph, r/g_grid+prolsph.size()/2));
@@ -116,9 +116,9 @@ std::vector<float> buildEnvelope(float width, size_t img_size)
     vector<float> prolsph = readImage(g_dirtyFile);
     
     vector<float> image;
-    for(int q=-img_size/2;q<img_size/2;q++) 
+    for(size_t q=-img_size/2;q<img_size/2;q++) 
     {
-        for(int p=-img_size/2;p<img_size/2;p++) 
+        for(size_t p=-img_size/2;p<img_size/2;p++) 
         {
              float r = sqrt(pow(q*g_grid,2)+pow(p*g_grid,2));
              image.push_back(1.0-pow(r/width,2));
@@ -197,8 +197,9 @@ int main(int argc, char** argv)
     }
 
     bool computeGolden = true;
-    if (argc > 1 && !strstr(argv[0], "skipgolden"))
+    if (argc > 1 && !strcmp(argv[1], "skipgolden"))
         computeGolden = false;
+
 
     // Reports some numbers
     cout << "Iterations = " << g_niters << endl;
@@ -231,12 +232,15 @@ int main(int argc, char** argv)
             cout << "    Cleaning rate  " << g_niters / time << " (iterations per second)" << endl;
             cout << "Done" << endl;
         }
+    } else {
+        cout << "Skipping CPU computation..." << std::endl;
     }
 
     // Write images out
     writeImage("residual.img", goldenResidual[3]);
     writeImage("model.img", goldenModel);
 
+#if defined(__CUDA__)
     //
     // Run the CUDA version of the code
     //
@@ -284,6 +288,7 @@ int main(int argc, char** argv)
     } else {
         cout << "Pass" << endl;
     }
+#endif
 
     return 0;
 }

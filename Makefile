@@ -30,6 +30,10 @@ INCLUDE = -I$(CUDA_INSTALL)/include -I$(CUB_HOME)/cub
 NVCC = nvcc
 NVCCFLAGS = -lineinfo -arch=sm_35 -O3 --compiler-options -fPIC
 
+ifeq ($(CUDA),1)
+	CFLAGS += -D__CUDA__
+	NVCCFLAGS += -D__CUDA__
+endif
 EXENAME = tMultiScaleCleanCuda
 OBJS = $(EXENAME).o Stopwatch.o MultiScaleGolden.o MultiScaleCuda.o
 
@@ -41,7 +45,11 @@ HogbomCuda.o:	HogbomCuda.cu HogbomCuda.h Parameters.h
 MultiScaleCuda.o:	MultiScaleCuda.cu MultiScaleCuda.h Parameters.h
 		$(NVCC) $(NVCCFLAGS) $(INCLUDE) -c $<
 
-%.o:		Parameters.h %.cc %.h 
+%.o:		%.cc Parameters.h %.h 
+		$(CXX) $(CFLAGS) $(INCLUDE) -c $<
+
+#Have to repeat this since there's no tMultiScaleCleanCuda.h
+%.o:		%.cc Parameters.h 
 		$(CXX) $(CFLAGS) $(INCLUDE) -c $<
 
 $(EXENAME):	$(OBJS)

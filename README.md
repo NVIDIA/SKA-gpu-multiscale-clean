@@ -1,5 +1,5 @@
 # GPUMultiscaleCLEAN
-Multi-scale clean for the GPU
+Multi-scale clean for the GPU and/or CPU
 
 This code is written by Mark Harris, based on work from the ASKAP project, and 
 modified for multi-scale by Levi Barnes. The original code can be found here:
@@ -17,3 +17,12 @@ working directory. These can be downloaded from here:
 * http://www.atnf.csiro.au/people/Ben.Humphreys/psf.img
 
 
+Build
+
+To build GPU version, specify CUDA=1 on the make line  
+
+	> make CUDA=1
+
+To run with GPU-only (i.e. without error checking), specify skipgolden on the command line
+
+	> ./tMultiScaleClean skipgolden
